@@ -35,4 +35,10 @@ fi
 as_user "bash '${INSTALL}'" || die "ratos-install.sh failed — is the configurator running? (./install.sh 20)"
 ok "RatOS configuration installed"
 
+# Extensions are only REGISTERED by ratos-install.sh; they must also be SYMLINKED into
+# klipper's klippy/extras + klippy/kinematics so klipper can load them.
+report "Materializing registered klippy extensions into klipper (ratos extensions symlink)"
+as_user "ratos extensions symlink" || warn "ratos extensions symlink failed — run manually: ratos extensions symlink"
+ok "extensions symlinked into klipper"
+
 warn "printer.cfg is now the RatOS TEMPLATE. Your real V-Core 4 IDEX config (from 'Current Configuration/') gets restored in a later step / manually."

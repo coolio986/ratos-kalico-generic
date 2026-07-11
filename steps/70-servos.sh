@@ -20,9 +20,11 @@ report "Installing servo_enable_delay extension"
 as_user "mkdir -p '$(dirname "${DEST}")' && cp '${SRC}' '${DEST}'"
 
 if command -v ratos >/dev/null 2>&1; then
+  # no -e: -e means error-if-exists; we want idempotent re-runs
   as_user "ratos extensions register klipper servo_enable_delay '${DEST}'" \
-    || warn "servo_enable_delay registration failed"
-  ok "servo_enable_delay registered"
+    || warn "servo_enable_delay registration failed (may already be registered)"
+  as_user "ratos extensions symlink klipper" || warn "symlink failed"
+  ok "servo_enable_delay registered + symlinked"
 else
   warn "ratos CLI missing — cannot register servo_enable_delay (rerun step 20)"
 fi
