@@ -23,6 +23,7 @@ STEPS=(
   "20-configurator.sh"
   "30-configuration.sh"
   "35-host-mcu.sh"
+  "36-kalico-compat.sh"
   "40-nginx-proxy.sh"
   "50-moonraker-wire.sh"
   "60-extras.sh"
