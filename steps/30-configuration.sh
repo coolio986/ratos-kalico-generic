@@ -1,26 +1,29 @@
-# 30 — RatOS configuration repo (macros, hooks, klippy extensions, printer defs)
-# (sourced by install.sh) — requires the configurator to be up (step 20) so
+# 30 — RatOS configuration install (macros, hooks, klippy extensions, printer defs)
+# (sourced by install.sh) — requires the configurator up (step 20) so
 # `ratos extensions register` works.
+#
+# NOTE (v2.1.x): config/RatOS is a SYMLINK to the configurator's bundled configuration/,
+# created by setup.sh in step 20. We do NOT clone RatOS-configuration here.
 
-as_user "mkdir -p '${RK_CONFIG}'"
+RATOS_CFG_DIR="${RK_CONFIG}/RatOS"
+INSTALL="${RATOS_CFG_DIR}/scripts/ratos-install.sh"
+[[ -e "${INSTALL}" ]] || die "config/RatOS not linked (missing ${INSTALL}). Did step 20 run setup.sh? Layout should be: ${RATOS_CFG_DIR} -> ${RK_CONFIGURATOR_DIR}/configuration"
+ok "config/RatOS present -> $(readlink -f "${RATOS_CFG_DIR}" 2>/dev/null || echo "${RATOS_CFG_DIR}")"
 
-git_ensure "${RK_CONFIGURATION_REPO}" "${RK_CONFIG}/RatOS" "${RK_CONFIGURATION_BRANCH}"
-git_ensure "${RK_THEME_REPO}"        "${RK_CONFIG}/.theme" "${RK_THEME_BRANCH}"
+# Theme (cosmetic mainsail skin) — separate repo, optional.
+git_ensure "${RK_THEME_REPO}" "${RK_CONFIG}/.theme" "${RK_THEME_BRANCH}" || warn "theme clone failed (non-fatal)"
 
-INSTALL="${RK_CONFIG}/RatOS/scripts/ratos-install.sh"
-[[ -f "${INSTALL}" ]] || die "ratos-install.sh not found at ${INSTALL}"
-
-# ratos-install.sh will (see scripts/ratos-common.sh):
+# ratos-install.sh will (see configuration/scripts/ratos-common.sh):
 #   - write a fresh printer.cfg from templates/initial-printer.template.cfg
 #   - symlink board udev rules
 #   - install beacon, git hooks, python deps
 #   - register klippy extensions via the `ratos` CLI (needs configurator up)
 report "Running ratos-install.sh (registers extensions, udev, beacon, hooks)"
-if [[ -f "${RK_CONFIG}/printer.cfg" ]]; then
+if [[ -f "${RK_CONFIG}/printer.cfg" ]] && [[ ! -f "${RK_CONFIG}/printer.cfg.pre-ratos" ]]; then
   warn "existing printer.cfg found — backing up to printer.cfg.pre-ratos"
   as_user "cp '${RK_CONFIG}/printer.cfg' '${RK_CONFIG}/printer.cfg.pre-ratos'"
 fi
 as_user "bash '${INSTALL}'" || die "ratos-install.sh failed — is the configurator running? (./install.sh 20)"
 ok "RatOS configuration installed"
 
-warn "printer.cfg is now the RatOS TEMPLATE. Your real V-Core 4 IDEX config (from 'Current Configuration/') must be restored in a later step / manually."
+warn "printer.cfg is now the RatOS TEMPLATE. Your real V-Core 4 IDEX config (from 'Current Configuration/') gets restored in a later step / manually."

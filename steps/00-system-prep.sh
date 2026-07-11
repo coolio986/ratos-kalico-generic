@@ -32,6 +32,14 @@ if [[ $node_ok -eq 0 ]]; then
 fi
 command -v node >/dev/null 2>&1 && ok "node $(node -v)" || warn "Node.js not installed — configurator step will fail until fixed"
 
+# pnpm: the configurator's setup.sh runs `npm install -g pnpm` AS THE USER, which
+# fails EACCES against Debian's apt-node global dir. Install it system-wide (root) here.
+report "Ensuring pnpm (system-wide)"
+if ! command -v pnpm >/dev/null 2>&1; then
+  sudo npm install -g pnpm@9 || warn "global pnpm install failed — configurator step may fail"
+fi
+command -v pnpm >/dev/null 2>&1 && ok "pnpm $(pnpm -v 2>/dev/null)" || warn "pnpm missing"
+
 # --- Serial/gpio groups for the printer user --------------------------------
 report "Adding ${RK_USER} to hardware groups"
 sudo usermod -aG tty,dialout,gpio,video "${RK_USER}" 2>/dev/null || true
