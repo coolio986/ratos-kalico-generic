@@ -18,6 +18,15 @@ git_ensure "${RK_THEME_REPO}" "${RK_CONFIG}/.theme" "${RK_THEME_BRANCH}" || warn
 #   - symlink board udev rules
 #   - install beacon, git hooks, python deps
 #   - register klippy extensions via the `ratos` CLI (needs configurator up)
+# Workaround: the bundled (deployment) ratos-install.sh reads the printer template from
+# "$SCRIPT_DIR/templates" (scripts/templates) but templates live at the repo root.
+# Add a compatibility symlink so install_printer_config resolves. (Proper fix: fork.)
+REAL_RATOS="$(readlink -f "${RATOS_CFG_DIR}")"
+if [[ -d "${REAL_RATOS}/templates" && ! -e "${REAL_RATOS}/scripts/templates" ]]; then
+  as_user "ln -s ../templates '${REAL_RATOS}/scripts/templates'"
+  ok "added scripts/templates -> ../templates compat symlink"
+fi
+
 report "Running ratos-install.sh (registers extensions, udev, beacon, hooks)"
 if [[ -f "${RK_CONFIG}/printer.cfg" ]] && [[ ! -f "${RK_CONFIG}/printer.cfg.pre-ratos" ]]; then
   warn "existing printer.cfg found — backing up to printer.cfg.pre-ratos"
