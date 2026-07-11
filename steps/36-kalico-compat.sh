@@ -19,16 +19,21 @@ if [[ -f "${CV}" ]]; then
   fi
 fi
 
-# --- 2) ratos_hybrid_corexy kinematics: Kalico requires supports_dual_carriage attr -------
+# --- 2) ratos_hybrid_corexy kinematics: Kalico API — supports_dual_carriage + clear_homing_state
 KIN="${RATOS_DIR}/klippy/kinematics/ratos_hybrid_corexy.py"
 if [[ -f "${KIN}" ]]; then
-  if grep -q "supports_dual_carriage" "${KIN}"; then
-    ok "kinematics already has supports_dual_carriage"
-  else
+  # 2a) supports_dual_carriage attribute (checked by Kalico printer.py for IDEX)
+  if ! grep -q "supports_dual_carriage" "${KIN}"; then
     report "Adding supports_dual_carriage to ratos_hybrid_corexy (Kalico kinematics API)"
     as_user "python3 -c \"p='${KIN}'; s=open(p).read(); s=s.replace('self.printer = config.get_printer()','self.printer = config.get_printer()\n        self.supports_dual_carriage = True  # Kalico kinematics API (IDEX)',1); open(p,'w').write(s)\""
-    grep -q "supports_dual_carriage" "${KIN}" && ok "kinematics patched" || warn "kinematics patch failed"
-  fi
+    grep -q "supports_dual_carriage" "${KIN}" && ok "supports_dual_carriage added" || warn "patch failed"
+  else ok "supports_dual_carriage present"; fi
+  # 2b) clear_homing_state method (Kalico force_move.py SET_KINEMATIC_POSITION calls it)
+  if ! grep -q "def clear_homing_state" "${KIN}"; then
+    report "Adding clear_homing_state to ratos_hybrid_corexy (Kalico kinematics API)"
+    as_user "python3 -c \"p='${KIN}'; s=open(p).read(); m='    def clear_homing_state(self, axes):\n        for i, _ in enumerate(self.limits):\n            if i in axes:\n                self.limits[i] = (1.0, -1.0)\n\n'; s=s.replace('    def home_axis(', m+'    def home_axis(', 1); open(p,'w').write(s)\""
+    grep -q "def clear_homing_state" "${KIN}" && ok "clear_homing_state added" || warn "patch failed"
+  else ok "clear_homing_state present"; fi
 fi
 
 # --- 3) beacon.cfg: log_points is a RatOS bed_mesh patch absent in Kalico -----------------
