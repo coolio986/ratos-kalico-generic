@@ -9,7 +9,7 @@ done
 
 cat <<EOF
 
-  ${RK_GREEN}Base install complete.${RK_NC}
+  Base install complete.
 
   Next:
     1) Open  http://<printer-ip>/configure/   -> finish the hardware wizard
