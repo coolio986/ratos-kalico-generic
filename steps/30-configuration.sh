@@ -41,4 +41,18 @@ report "Materializing registered klippy extensions into klipper (ratos extension
 as_user "ratos extensions symlink" || warn "ratos extensions symlink failed — run manually: ratos extensions symlink"
 ok "extensions symlinked into klipper"
 
+# The bundled install_udev_rules has a CFG_DIR bug: it creates a single broken symlink
+# literally named '*.rules' (unexpanded glob) instead of per-board rules, so /dev/RatOS/*
+# and /dev/<board> never appear (breaks flashing + MCU serial paths). Install them right.
+report "Installing board udev rules (fixes bundled install_udev_rules bug)"
+sudo rm -f "/etc/udev/rules.d/*.rules"
+BOARDS_DIR="$(readlink -f "${RATOS_CFG_DIR}")/boards"
+if [[ -d "${BOARDS_DIR}" ]]; then
+  for f in "${BOARDS_DIR}"/*/*.rules; do [[ -e "${f}" ]] && sudo ln -sf "${f}" /etc/udev/rules.d/; done
+  sudo udevadm control --reload-rules && sudo udevadm trigger --action=add --subsystem-match=tty || true
+  ok "board udev rules installed + triggered (/dev/RatOS/* symlinks)"
+else
+  warn "boards dir not found at ${BOARDS_DIR}"
+fi
+
 warn "printer.cfg is now the RatOS TEMPLATE. Your real V-Core 4 IDEX config (from 'Current Configuration/') gets restored in a later step / manually."

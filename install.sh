@@ -22,10 +22,12 @@ STEPS=(
   "10-base-check.sh"
   "20-configurator.sh"
   "30-configuration.sh"
+  "35-host-mcu.sh"
   "40-nginx-proxy.sh"
   "50-moonraker-wire.sh"
   "60-extras.sh"
   "70-servos.sh"
+  "80-register-extensions.sh"
   "90-finalize.sh"
 )
 
