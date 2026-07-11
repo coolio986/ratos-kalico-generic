@@ -15,6 +15,9 @@ SETUP="${RK_CONFIGURATOR_DIR}/app/scripts/setup.sh"
 # which aborts on a fresh box where /usr/local/bin/ratos doesn't exist yet.
 # Ensure a plain file is present so that rm succeeds. (Proper fix: `rm -f` in the fork.)
 sudo sh -c 'rm -f /usr/local/bin/ratos; : > /usr/local/bin/ratos'
+# A partially-failed setup.sh leaves root-owned /tmp/03*-ratos-configurator-* files
+# that then block `touch` on the next run. Clear them so re-runs are clean.
+sudo rm -f /tmp/03*-ratos-configurator-* 2>/dev/null || true
 
 report "Running configurator setup.sh (pnpm deps, ratos CLI, service, udev, symlink config)"
 # runs as the printer user; refuses root. it uses sudo internally (passwordless).
