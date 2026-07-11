@@ -1,31 +1,56 @@
-# 36 — Kalico compatibility patches for RatOS helper scripts
-# (sourced by install.sh)
-# Kalico moved klippy to a package with relative imports (`from . import chelper, util`),
-# so scripts that import klippy modules top-level break with
-#   "ImportError: attempted relative import with no known parent package".
-# check-version.py (board version detection used by the wizard) is one such script — its
-# failure makes freshly-flashed boards show as "unresponsive" in the wizard.
+# 36 — Kalico + Trixie compatibility patches for RatOS
+# (sourced by install.sh) — RatOS targets its own klipper fork + Bookworm/py3.11. On Kalico
+# + Debian 13 (py3.13) several things break. These idempotent patches fix them and survive
+# configurator redeploys (this step re-applies after `git pull`).
 
+RATOS_DIR="${RK_CONFIG}/RatOS"
+
+# --- 1) check-version.py: Kalico moved klippy to a package with relative imports ----------
 CV="${RK_CONFIGURATOR_DIR}/app/scripts/check-version.py"
-if [[ ! -f "${CV}" ]]; then
-  warn "check-version.py not found at ${CV} — skipping Kalico compat patch"
-  return 0
+if [[ -f "${CV}" ]]; then
+  if grep -q "from klippy import reactor" "${CV}"; then
+    ok "check-version.py already Kalico-compatible"
+  else
+    report "Patching check-version.py for Kalico package imports"
+    as_user "cp '${CV}' '${CV}.pre-kalico'"
+    as_user "sed -i 's|sys.path.append(os.path.join(KLIPPER_DIR, \"klippy\"))|sys.path.append(KLIPPER_DIR)|' '${CV}'"
+    as_user "sed -i 's|^import reactor\$|from klippy import reactor|; s|^import serialhdl\$|from klippy import serialhdl|; s|^import clocksync\$|from klippy import clocksync|; s|^import mcu\$|from klippy import mcu|' '${CV}'"
+    ok "check-version.py patched"
+  fi
 fi
 
-if grep -q "from klippy import reactor" "${CV}"; then
-  ok "check-version.py already Kalico-compatible"
-  return 0
+# --- 2) ratos_hybrid_corexy kinematics: Kalico requires supports_dual_carriage attr -------
+KIN="${RATOS_DIR}/klippy/kinematics/ratos_hybrid_corexy.py"
+if [[ -f "${KIN}" ]]; then
+  if grep -q "supports_dual_carriage" "${KIN}"; then
+    ok "kinematics already has supports_dual_carriage"
+  else
+    report "Adding supports_dual_carriage to ratos_hybrid_corexy (Kalico kinematics API)"
+    as_user "python3 -c \"p='${KIN}'; s=open(p).read(); s=s.replace('self.printer = config.get_printer()','self.printer = config.get_printer()\n        self.supports_dual_carriage = True  # Kalico kinematics API (IDEX)',1); open(p,'w').write(s)\""
+    grep -q "supports_dual_carriage" "${KIN}" && ok "kinematics patched" || warn "kinematics patch failed"
+  fi
 fi
 
-report "Patching check-version.py for Kalico package imports"
-as_user "cp '${CV}' '${CV}.pre-kalico'"
-# Put klippy's PARENT dir on sys.path (so `klippy` resolves as a package, not klippy.py),
-# and import the modules via the package.
-as_user "sed -i 's|sys.path.append(os.path.join(KLIPPER_DIR, \"klippy\"))|sys.path.append(KLIPPER_DIR)|' '${CV}'"
-as_user "sed -i 's|^import reactor\$|from klippy import reactor|; s|^import serialhdl\$|from klippy import serialhdl|; s|^import clocksync\$|from klippy import clocksync|; s|^import mcu\$|from klippy import mcu|' '${CV}'"
-
-if grep -q "from klippy import reactor" "${CV}"; then
-  ok "check-version.py patched for Kalico"
-else
-  warn "check-version.py patch did not apply cleanly — inspect ${CV}"
+# --- 3) beacon.cfg: log_points is a RatOS bed_mesh patch absent in Kalico -----------------
+BC="${RATOS_DIR}/z-probe/beacon.cfg"
+if [[ -f "${BC}" ]] && grep -qE "^log_points:" "${BC}"; then
+  report "Removing log_points from beacon.cfg (Kalico bed_mesh lacks it)"
+  as_user "sed -i 's/^log_points:/#log_points:  # removed: Kalico stock bed_mesh/' '${BC}'"
+  ok "log_points removed"
 fi
+
+# --- 4) V-Core 4 printer cfgs: split_delta_z 0.001 < Kalico minval 0.01 -------------------
+for pc in "${RATOS_DIR}"/printers/v-core-4*/v-core-4*.cfg; do
+  [[ -f "${pc}" ]] || continue
+  if grep -qE "^split_delta_z: 0.001" "${pc}"; then
+    as_user "sed -i 's/^split_delta_z: 0.001/split_delta_z: 0.01/' '${pc}'"
+    ok "split_delta_z -> 0.01 in $(basename "$(dirname "${pc}")")"
+  fi
+done
+
+# --- 5) pygam: klippy requirements pin 0.9.1 needs py<3.13; Trixie is py3.13 --------------
+if ! "${RK_KLIPPY_ENV}/bin/python" -c "import pygam" 2>/dev/null; then
+  report "Installing Python 3.13-compatible pygam into klippy-env"
+  as_user "'${RK_KLIPPY_ENV}/bin/pip' install -q 'pygam>=0.10.1'" || warn "pygam install failed"
+fi
+"${RK_KLIPPY_ENV}/bin/python" -c "import pygam" 2>/dev/null && ok "pygam available in klippy-env" || warn "pygam missing"
