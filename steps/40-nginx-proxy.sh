@@ -38,13 +38,14 @@ else
     }
 EOF
 )"
-  # insert after the first server_name line in the mainsail server block
+  # insert after the first server_name line in the mainsail server block.
+  # awk runs as the user and writes a user-owned temp; sudo only reads + installs.
   tmp="$(mktemp)"
-  awk -v block="$BLOCK" '
+  sudo cat "$SITE" | awk -v block="$BLOCK" '
     !done && /server_name/ { print; print block; done=1; next }
     { print }
-  ' "$SITE" | sudo tee "$tmp" >/dev/null
-  if ! sudo grep -q 'location /configure' "$tmp"; then
+  ' > "$tmp"
+  if ! grep -q 'location /configure' "$tmp"; then
     rm -f "$tmp"; die "failed to inject /configure block (no server_name line?) — patch ${SITE} manually"
   fi
   sudo cp "$SITE" "${SITE}.pre-ratos"
