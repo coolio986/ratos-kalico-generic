@@ -11,6 +11,11 @@ git_ensure "${RK_CONFIGURATOR_REPO}" "${RK_CONFIGURATOR_DIR}" "${RK_CONFIGURATOR
 SETUP="${RK_CONFIGURATOR_DIR}/app/scripts/setup.sh"
 [[ -f "${SETUP}" ]] || die "configurator setup.sh not found at ${SETUP} (wrong branch? expected ${RK_CONFIGURATOR_BRANCH})"
 
+# Workaround: configurator setup.sh install_cli runs `rm` (no -f) on the CLI path,
+# which aborts on a fresh box where /usr/local/bin/ratos doesn't exist yet.
+# Ensure a plain file is present so that rm succeeds. (Proper fix: `rm -f` in the fork.)
+sudo sh -c 'rm -f /usr/local/bin/ratos; : > /usr/local/bin/ratos'
+
 report "Running configurator setup.sh (pnpm deps, ratos CLI, service, udev, symlink config)"
 # runs as the printer user; refuses root. it uses sudo internally (passwordless).
 as_user "bash '${SETUP}'" || die "configurator setup.sh failed — inspect: sudo journalctl -u ratos-configurator -n 100 ; rerun: ./install.sh 20"
