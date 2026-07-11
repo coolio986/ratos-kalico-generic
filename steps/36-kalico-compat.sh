@@ -59,3 +59,10 @@ if ! "${RK_KLIPPY_ENV}/bin/python" -c "import pygam" 2>/dev/null; then
   as_user "'${RK_KLIPPY_ENV}/bin/pip' install -q 'pygam>=0.10.1'" || warn "pygam install failed"
 fi
 "${RK_KLIPPY_ENV}/bin/python" -c "import pygam" 2>/dev/null && ok "pygam available in klippy-env" || warn "pygam missing"
+
+# --- 6) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
+# Python does NOT reliably invalidate __pycache__ for symlinked, in-place-edited modules,
+# so a stale .pyc can mask patches above (e.g. missing clear_homing_state at runtime).
+report "Clearing klipper bytecode cache (forces recompile of patched modules)"
+find "${RK_KLIPPER_DIR}/klippy" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+ok "bytecode cache cleared — restart klipper to load patched modules"
