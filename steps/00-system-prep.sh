@@ -8,7 +8,7 @@ sudo apt-get update
 sudo apt-get install -y \
   git curl wget unzip nginx \
   python3-serial python3-opencv python3-numpy python3-matplotlib \
-  inotify-tools policykit-1 ca-certificates jq \
+  inotify-tools polkitd pkexec ca-certificates jq \
   || die "apt dependency install failed"
 ok "apt dependencies installed"
 
