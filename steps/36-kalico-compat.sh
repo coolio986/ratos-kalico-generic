@@ -88,23 +88,121 @@ elif [[ -f "${BM}" ]]; then
   ok "beacon_mesh ZMesh already Kalico-compatible"
 fi
 
-# --- 7) Belt-tension graphs: run graph_accelerometer.py via klippy-env -------------------
-# Scripts invoke graph_accelerometer.py by path; its shebang is system python3, which on
-# Kalico fails with ModuleNotFoundError: cffi (chelper). Always use KLIPPER_ENV python.
+# --- 7) Resonance graphs: run Klipper graph scripts via klippy-env -----------------------
+# Scripts invoke graph_accelerometer.py / calibrate_shaper.py by path; their shebang is
+# system python3, which on Kalico fails with ModuleNotFoundError: cffi (chelper).
+# Always use KLIPPER_ENV python.
 for _bt in \
   "${RATOS_DIR}/scripts/idex-generate-belt-tension-graph.sh" \
-  "${RATOS_DIR}/scripts/generate-belt-tension-graph.sh"
+  "${RATOS_DIR}/scripts/generate-belt-tension-graph.sh" \
+  "${RATOS_DIR}/scripts/idex-generate-shaper-graph.sh" \
+  "${RATOS_DIR}/scripts/generate-shaper-graph-x.sh" \
+  "${RATOS_DIR}/scripts/generate-shaper-graph-y.sh"
 do
   [[ -f "${_bt}" ]] || continue
-  if grep -qE '\$\{KLIPPER_ENV\}"/bin/python.*graph_accelerometer' "${_bt}" \
-    || grep -qE "\$\{KLIPPER_ENV\}/bin/python.*graph_accelerometer" "${_bt}"; then
-    ok "belt graph uses klippy-env: $(basename "${_bt}")"
-  elif grep -q 'graph_accelerometer.py' "${_bt}"; then
-    report "Patching $(basename "${_bt}") to use KLIPPER_ENV python"
-    as_user "sed -i 's|\"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|\"\${KLIPPER_ENV}\"/bin/python \"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|g' '${_bt}'"
-    ok "patched $(basename "${_bt}")"
+  _patched=0
+  if grep -q 'graph_accelerometer.py' "${_bt}"; then
+    if grep -qE '\$\{KLIPPER_ENV\}"/bin/python.*graph_accelerometer' "${_bt}" \
+      || grep -qE "\$\{KLIPPER_ENV\}/bin/python.*graph_accelerometer" "${_bt}"; then
+      ok "belt graph uses klippy-env: $(basename "${_bt}")"
+    else
+      report "Patching $(basename "${_bt}") graph_accelerometer → KLIPPER_ENV python"
+      as_user "sed -i 's|\"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|\"\${KLIPPER_ENV}\"/bin/python \"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|g' '${_bt}'"
+      _patched=1
+    fi
   fi
+  if grep -q 'calibrate_shaper.py' "${_bt}"; then
+    if grep -qE '\$\{KLIPPER_ENV\}"/bin/python.*calibrate_shaper' "${_bt}" \
+      || grep -qE "\$\{KLIPPER_ENV\}/bin/python.*calibrate_shaper" "${_bt}"; then
+      ok "shaper graph uses klippy-env: $(basename "${_bt}")"
+    else
+      report "Patching $(basename "${_bt}") calibrate_shaper → KLIPPER_ENV python"
+      as_user "sed -i 's|\"\${KLIPPER_DIR}\"/scripts/calibrate_shaper.py|\"\${KLIPPER_ENV}\"/bin/python \"\${KLIPPER_DIR}\"/scripts/calibrate_shaper.py|g' '${_bt}'"
+      _patched=1
+    fi
+  fi
+  [[ "${_patched}" -eq 1 ]] && ok "patched $(basename "${_bt}")"
 done
+
+# --- 7b) resonance_tester: restore RatOS-equivalent slow sweep on Kalico -----------------
+# Kalico defaults sweeping_period to 0 (disabled). RatOS/mainline default is 1.2, which is
+# the visible axis oscillation during belt/shaper tests (especially hybrid CoreXY IDEX).
+_RC="${RK_CONFIG}/RatOS.cfg"
+if [[ -f "${_RC}" ]] && grep -qE '^\[resonance_tester\]' "${_RC}"; then
+  if grep -qE '^sweeping_period:' "${_RC}"; then
+    ok "sweeping_period already set in RatOS.cfg"
+  else
+    report "Adding sweeping_period/sweeping_accel to [resonance_tester] in RatOS.cfg"
+    as_user "python3 -c \"
+from pathlib import Path
+p = Path('${_RC}')
+lines = p.read_text().splitlines(True)
+out = []
+i = 0
+while i < len(lines):
+    out.append(lines[i])
+    if lines[i].strip() == '[resonance_tester]':
+        body = []
+        j = i + 1
+        while j < len(lines) and lines[j].strip() and not lines[j].startswith('['):
+            body.append(lines[j]); j += 1
+        inserted = False
+        new_body = []
+        for b in body:
+            if b.lstrip().startswith('probe_points:') and not inserted:
+                new_body.append('sweeping_period: 1.2\\n')
+                new_body.append('sweeping_accel: 400\\n')
+                inserted = True
+            new_body.append(b)
+        if not inserted:
+            new_body.append('sweeping_period: 1.2\\n')
+            new_body.append('sweeping_accel: 400\\n')
+        out.extend(new_body)
+        i = j
+        continue
+    i += 1
+p.write_text(''.join(out))
+\""
+    grep -qE '^sweeping_period:' "${_RC}" && ok "sweeping_period added to RatOS.cfg" || warn "sweeping_period patch failed"
+  fi
+fi
+
+# Also bake into bundled configuration templates under RatOS/ (idempotent)
+while IFS= read -r -d '' _cfg; do
+  grep -qE '^\[resonance_tester\]' "${_cfg}" || continue
+  grep -qE '^sweeping_period:' "${_cfg}" && continue
+  report "Adding sweeping_* to $(basename "$(dirname "${_cfg}")")/$(basename "${_cfg}")"
+  as_user "python3 -c \"
+from pathlib import Path
+p = Path('${_cfg}')
+lines = p.read_text().splitlines(True)
+out = []
+i = 0
+while i < len(lines):
+    out.append(lines[i])
+    if lines[i].strip() == '[resonance_tester]':
+        body = []
+        j = i + 1
+        while j < len(lines) and lines[j].strip() and not lines[j].startswith('['):
+            body.append(lines[j]); j += 1
+        inserted = False
+        new_body = []
+        for b in body:
+            if b.lstrip().startswith('probe_points:') and not inserted:
+                new_body.append('sweeping_period: 1.2\\n')
+                new_body.append('sweeping_accel: 400\\n')
+                inserted = True
+            new_body.append(b)
+        if not inserted:
+            new_body.append('sweeping_period: 1.2\\n')
+            new_body.append('sweeping_accel: 400\\n')
+        out.extend(new_body)
+        i = j
+        continue
+    i += 1
+p.write_text(''.join(out))
+\""
+done < <(find "${RATOS_DIR}" -name '*.cfg' -print0 2>/dev/null)
 
 # --- 8) Configurator UI sanity (SciChart must be gone; VAOC uses MJPEG) -------------------
 # Analysis/VAOC now ship as MIT uPlot + MJPEG-first camera (`/webcam/stream`). Do NOT

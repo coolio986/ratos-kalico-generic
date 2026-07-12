@@ -43,6 +43,8 @@ RK_GH_OWNER=youruser ./install.sh
 |---|---|
 | Kalico `beacon_mesh` ZMesh API (no `reactor`) | step `36` re-applies; also baked by `scripts/publish-configurator-deployment.sh` into the configurator’s bundled `configuration/` |
 | Kalico `ratos_hybrid_corexy` (`supports_dual_carriage`, `clear_homing_state`) | step `36` (+ publish script into fork) |
+| Belt/shaper graphs via `KLIPPER_ENV` python (cffi) | step `36` (+ configuration scripts) |
+| `[resonance_tester]` `sweeping_period: 1.2` (Kalico default is 0) | configurator `klipper-config.ts` + templates + step `36` |
 | `split_delta_z` / `log_points` / `pygam` / `check-version.py` | step `36` |
 | OSS analysis (uPlot) + MJPEG-first VAOC | must live in `RatOS-configurator` **`v2.1.x-deployment`** `app/build` — publish with the script below. SciChart is **removed**, not patched. |
 | Moonraker DB seeds (VAOC camera-settings) | step `65` |
