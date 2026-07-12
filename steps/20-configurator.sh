@@ -8,6 +8,12 @@ need_cmd node
 need_cmd pnpm
 git_ensure "${RK_CONFIGURATOR_REPO}" "${RK_CONFIGURATOR_DIR}" "${RK_CONFIGURATOR_BRANCH}"
 
+# The configurator bundles configuration/ (incl. klippy kinematics/extensions symlinked into
+# klipper). A redeploy updates those .py files, but Python won't reliably invalidate klipper's
+# __pycache__ for symlinked, in-place-updated modules — a stale .pyc can then mask the update.
+# Clear it so the next klipper (process) restart loads the updated modules.
+find "${RK_KLIPPER_DIR}/klippy" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+
 SETUP="${RK_CONFIGURATOR_DIR}/app/scripts/setup.sh"
 [[ -f "${SETUP}" ]] || die "configurator setup.sh not found at ${SETUP} (wrong branch? expected ${RK_CONFIGURATOR_BRANCH})"
 
