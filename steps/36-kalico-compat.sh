@@ -88,10 +88,54 @@ elif [[ -f "${BM}" ]]; then
   ok "beacon_mesh ZMesh already Kalico-compatible"
 fi
 
-# --- 7) Resonance graphs: run Klipper graph scripts via klippy-env -----------------------
-# Scripts invoke graph_accelerometer.py / calibrate_shaper.py by path; their shebang is
-# system python3, which on Kalico fails with ModuleNotFoundError: cffi (chelper).
-# Always use KLIPPER_ENV python.
+# --- 7) Resonance graphs: force klippy-env for Kalico (cffi / chelper) -------------------
+# calibrate_shaper.py and graph_accelerometer.py ship with `#!/usr/bin/env python3`.
+# System python3 has no cffi → ModuleNotFoundError. Two layers of defense:
+#   (a) rewrite those scripts' shebangs to RK_KLIPPY_ENV (survives unpatched callers)
+#   (b) rewrite RatOS shell wrappers to invoke via "${KLIPPER_ENV}"/bin/python
+# config/RatOS is a symlink into the configurator deployment; step 20 redeploys wipe (b),
+# so (a) is required. Moonraker/klipper updates can reset (a) — this step is idempotent.
+
+# 7a) Ensure cffi exists in klippy-env
+if [[ -x "${RK_KLIPPY_ENV}/bin/python" ]]; then
+  if ! "${RK_KLIPPY_ENV}/bin/python" -c "import cffi" 2>/dev/null; then
+    report "Installing cffi into klippy-env (required by Kalico chelper / graph scripts)"
+    as_user "'${RK_KLIPPY_ENV}/bin/pip' install -q cffi" || warn "cffi pip install failed"
+  fi
+  if "${RK_KLIPPY_ENV}/bin/python" -c "import cffi" 2>/dev/null; then
+    ok "cffi available in klippy-env"
+  else
+    warn "cffi still missing in ${RK_KLIPPY_ENV} — shaper/belt graphs will fail"
+  fi
+else
+  warn "klippy-env python missing at ${RK_KLIPPY_ENV}/bin/python"
+fi
+
+# 7b) Shebang rewrite on Klipper graph scripts (catches EVERY caller)
+for _ks in calibrate_shaper.py graph_accelerometer.py; do
+  _kp="${RK_KLIPPER_DIR}/scripts/${_ks}"
+  [[ -f "${_kp}" ]] || continue
+  if head -1 "${_kp}" | grep -qF "${RK_KLIPPY_ENV}/bin/python"; then
+    ok "shebang already klippy-env: ${_ks}"
+  else
+    report "Rewriting shebang of ${_ks} → ${RK_KLIPPY_ENV}/bin/python"
+    as_user "python3 -c \"
+from pathlib import Path
+p = Path('${_kp}')
+lines = p.read_text().splitlines(True)
+if lines and lines[0].startswith('#!'):
+    lines[0] = '#!${RK_KLIPPY_ENV}/bin/python\\n'
+else:
+    lines.insert(0, '#!${RK_KLIPPY_ENV}/bin/python\\n')
+p.write_text(''.join(lines))
+\""
+    head -1 "${_kp}" | grep -qF "${RK_KLIPPY_ENV}/bin/python" \
+      && ok "shebang patched: ${_ks}" \
+      || warn "shebang patch failed: ${_ks}"
+  fi
+done
+
+# 7c) Shell wrappers under RatOS/scripts (configurator symlink target)
 for _bt in \
   "${RATOS_DIR}/scripts/idex-generate-belt-tension-graph.sh" \
   "${RATOS_DIR}/scripts/generate-belt-tension-graph.sh" \
@@ -100,31 +144,41 @@ for _bt in \
   "${RATOS_DIR}/scripts/generate-shaper-graph-y.sh"
 do
   [[ -f "${_bt}" ]] || continue
-  _patched=0
-  if grep -q 'graph_accelerometer.py' "${_bt}"; then
-    if grep -qE '\$\{KLIPPER_ENV\}"/bin/python.*graph_accelerometer' "${_bt}" \
-      || grep -qE "\$\{KLIPPER_ENV\}/bin/python.*graph_accelerometer" "${_bt}"; then
-      ok "belt graph uses klippy-env: $(basename "${_bt}")"
-    else
-      report "Patching $(basename "${_bt}") graph_accelerometer → KLIPPER_ENV python"
-      as_user "sed -i 's|\"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|\"\${KLIPPER_ENV}\"/bin/python \"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|g' '${_bt}'"
-      _patched=1
-    fi
+  _res="$(as_user "python3 -c \"
+from pathlib import Path
+p = Path('${_bt}')
+s = p.read_text()
+orig = s
+for name in ('calibrate_shaper.py', 'graph_accelerometer.py'):
+    bare = '\\\"\\\${KLIPPER_DIR}\\\"/scripts/' + name
+    wrapped = '\\\"\\\${KLIPPER_ENV}\\\"/bin/python ' + bare
+    # Prevent double-wrapping
+    s = s.replace(wrapped, '@@WRAPPED@@')
+    s = s.replace(bare, wrapped)
+    s = s.replace('@@WRAPPED@@', wrapped)
+if s != orig:
+    p.write_text(s)
+    print('patched')
+else:
+    print('ok')
+\"" | tail -1)"
+  if [[ "${_res}" == "patched" ]]; then
+    ok "wrapper patched → klippy-env: $(basename "${_bt}")"
+  else
+    ok "wrapper already klippy-env: $(basename "${_bt}")"
   fi
-  if grep -q 'calibrate_shaper.py' "${_bt}"; then
-    if grep -qE '\$\{KLIPPER_ENV\}"/bin/python.*calibrate_shaper' "${_bt}" \
-      || grep -qE "\$\{KLIPPER_ENV\}/bin/python.*calibrate_shaper" "${_bt}"; then
-      ok "shaper graph uses klippy-env: $(basename "${_bt}")"
-    else
-      report "Patching $(basename "${_bt}") calibrate_shaper → KLIPPER_ENV python"
-      as_user "sed -i 's|\"\${KLIPPER_DIR}\"/scripts/calibrate_shaper.py|\"\${KLIPPER_ENV}\"/bin/python \"\${KLIPPER_DIR}\"/scripts/calibrate_shaper.py|g' '${_bt}'"
-      _patched=1
-    fi
-  fi
-  [[ "${_patched}" -eq 1 ]] && ok "patched $(basename "${_bt}")"
 done
 
-# --- 7b) resonance_tester: restore RatOS-equivalent slow sweep on Kalico -----------------
+# Sanity: prove calibrate_shaper imports under klippy-env (not system python)
+if [[ -f "${RK_KLIPPER_DIR}/scripts/calibrate_shaper.py" && -x "${RK_KLIPPY_ENV}/bin/python" ]]; then
+  if as_user "cd '${RK_KLIPPER_DIR}' && '${RK_KLIPPY_ENV}/bin/python' -c 'import cffi; from klippy.extras import shaper_calibrate'" >/dev/null 2>&1; then
+    ok "klippy-env can import shaper_calibrate + cffi"
+  else
+    warn "klippy-env cannot import shaper_calibrate/cffi — try: ${RK_KLIPPY_ENV}/bin/pip install cffi"
+  fi
+fi
+
+# --- 7d) resonance_tester: restore RatOS-equivalent slow sweep on Kalico -----------------
 # Kalico defaults sweeping_period to 0 (disabled). RatOS/mainline default is 1.2, which is
 # the visible axis oscillation during belt/shaper tests (especially hybrid CoreXY IDEX).
 _RC="${RK_CONFIG}/RatOS.cfg"

@@ -91,6 +91,34 @@ PY
   fi
 fi
 
+# Bake KLIPPER_ENV wrappers into bundled shaper/belt graph scripts (Kalico cffi)
+for _bt in \
+  "${WORK}/configuration/scripts/idex-generate-belt-tension-graph.sh" \
+  "${WORK}/configuration/scripts/generate-belt-tension-graph.sh" \
+  "${WORK}/configuration/scripts/idex-generate-shaper-graph.sh" \
+  "${WORK}/configuration/scripts/generate-shaper-graph-x.sh" \
+  "${WORK}/configuration/scripts/generate-shaper-graph-y.sh"
+do
+  [[ -f "${_bt}" ]] || continue
+  python3 - <<PY
+from pathlib import Path
+p = Path("${_bt}")
+s = p.read_text()
+orig = s
+for name in ("calibrate_shaper.py", "graph_accelerometer.py"):
+    bare = '"\${KLIPPER_DIR}"/scripts/' + name
+    wrapped = '"\${KLIPPER_ENV}"/bin/python ' + bare
+    s = s.replace(wrapped, "@@WRAPPED@@")
+    s = s.replace(bare, wrapped)
+    s = s.replace("@@WRAPPED@@", wrapped)
+if s != orig:
+    p.write_text(s)
+    print(f"patched graph wrapper: {p.name}")
+else:
+    print(f"graph wrapper ok: {p.name}")
+PY
+done
+
 cd "${WORK}"
 git add -A
 if git diff --cached --quiet; then
@@ -99,10 +127,10 @@ if git diff --cached --quiet; then
 fi
 
 git commit -m "$(cat <<'EOF'
-feat: OSS analysis/VAOC build + Kalico beacon/kinematics
+feat: OSS analysis/VAOC build + Kalico beacon/kinematics/graphs
 
-Replace SciChart with uPlot; MJPEG-first VAOC. Bake Kalico ZMesh and
-ratos_hybrid_corexy API fixes into bundled configuration.
+Replace SciChart with uPlot; MJPEG-first VAOC. Bake Kalico ZMesh,
+ratos_hybrid_corexy API, and KLIPPER_ENV graph-script wrappers.
 EOF
 )"
 
