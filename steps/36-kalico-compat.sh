@@ -88,7 +88,25 @@ elif [[ -f "${BM}" ]]; then
   ok "beacon_mesh ZMesh already Kalico-compatible"
 fi
 
-# --- 7) Configurator UI sanity (SciChart must be gone; VAOC uses MJPEG) -------------------
+# --- 7) Belt-tension graphs: run graph_accelerometer.py via klippy-env -------------------
+# Scripts invoke graph_accelerometer.py by path; its shebang is system python3, which on
+# Kalico fails with ModuleNotFoundError: cffi (chelper). Always use KLIPPER_ENV python.
+for _bt in \
+  "${RATOS_DIR}/scripts/idex-generate-belt-tension-graph.sh" \
+  "${RATOS_DIR}/scripts/generate-belt-tension-graph.sh"
+do
+  [[ -f "${_bt}" ]] || continue
+  if grep -qE '\$\{KLIPPER_ENV\}"/bin/python.*graph_accelerometer' "${_bt}" \
+    || grep -qE "\$\{KLIPPER_ENV\}/bin/python.*graph_accelerometer" "${_bt}"; then
+    ok "belt graph uses klippy-env: $(basename "${_bt}")"
+  elif grep -q 'graph_accelerometer.py' "${_bt}"; then
+    report "Patching $(basename "${_bt}") to use KLIPPER_ENV python"
+    as_user "sed -i 's|\"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|\"\${KLIPPER_ENV}\"/bin/python \"\${KLIPPER_DIR}\"/scripts/graph_accelerometer.py|g' '${_bt}'"
+    ok "patched $(basename "${_bt}")"
+  fi
+done
+
+# --- 8) Configurator UI sanity (SciChart must be gone; VAOC uses MJPEG) -------------------
 # Analysis/VAOC now ship as MIT uPlot + MJPEG-first camera (`/webcam/stream`). Do NOT
 # patch SciChart fonts here — SciChart is removed from the OSS build. Fresh installs must
 # pull a v2.1.x-deployment that already contains that build (see scripts/publish-configurator-
@@ -105,7 +123,7 @@ if [[ -d "${BUILD_STATIC}" ]]; then
   fi
 fi
 
-# --- 8) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
+# --- 9) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
 # Python does NOT reliably invalidate __pycache__ for symlinked, in-place-edited modules,
 # so a stale .pyc can mask patches above (e.g. missing clear_homing_state at runtime).
 report "Clearing klipper bytecode cache (forces recompile of patched modules)"

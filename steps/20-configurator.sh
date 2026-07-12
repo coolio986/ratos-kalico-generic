@@ -29,9 +29,10 @@ report "Running configurator setup.sh (pnpm deps, ratos CLI, service, udev, syml
 # runs as the printer user; refuses root. it uses sudo internally (passwordless).
 as_user "bash '${SETUP}'" || die "configurator setup.sh failed — inspect: sudo journalctl -u ratos-configurator -n 100 ; rerun: ./install.sh 20"
 
-report "Starting ratos-configurator.service"
+report "Starting ratos-configurator.service (install only — nginx auto-wakes later; not enabled on boot)"
 sudo systemctl daemon-reload || true
-sudo systemctl enable ratos-configurator.service 2>/dev/null || true
+# Do not enable on boot: woken by nginx auth_request → ratos-ondemand on /configure.
+sudo systemctl disable ratos-configurator.service 2>/dev/null || true
 sudo systemctl restart ratos-configurator.service 2>/dev/null || warn "could not (re)start service via systemctl"
 
 wait_for_configurator

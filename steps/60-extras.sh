@@ -18,7 +18,7 @@ else
   warn "ratos CLI missing — cannot register LMA (rerun step 20 first)"
 fi
 
-# --- Crowsnest (webcam streamer; VAOC/timelapse use the camera) -------------
+# --- Crowsnest (webcam streamer; VAOC only — do NOT leave enabled on boot) -------------
 if [[ -d "${RK_HOME}/crowsnest/.git" ]]; then
   ok "crowsnest already installed"
 else
@@ -27,4 +27,9 @@ else
   if [[ -f "${RK_HOME}/crowsnest/tools/install.sh" ]]; then
     sudo bash -lc "cd '${RK_HOME}/crowsnest' && BASE_USER='${RK_USER}' tools/install.sh" || warn "crowsnest install failed (non-fatal — webcam only)"
   fi
+fi
+# Installer enables the unit; we want on-demand only (USB/CPU/undervoltage risk on 1GB Pi).
+if systemctl list-unit-files crowsnest.service &>/dev/null; then
+  sudo systemctl disable --now crowsnest.service 2>/dev/null || true
+  ok "crowsnest installed but disabled (nginx /webcam auto-wakes via ratos-ondemand)"
 fi

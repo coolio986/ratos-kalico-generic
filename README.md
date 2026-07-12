@@ -14,9 +14,9 @@ Layers RatOS on top of a KIAUH-installed base:
 | 10 | verify KIAUH base (Kalico + Moonraker + Mainsail) exists |
 | 20 | install + run **RatOS Configurator** (`/configure`, `ratos` CLI) on :3000 |
 | 30 | clone **RatOS-configuration** fork, run `ratos-install.sh` (macros, hooks, klippy extensions, udev, beacon) |
-| 40 | nginx `/configure` proxy -> :3000 |
+| 40 | nginx `/configure` + on-demand wake (`ratos-ondemand`; `/webcam` wakes crowsnest) |
 | 50 | wire moonraker: origins -> your forks, includes, service perms |
-| 60 | linear movement analysis (realtime analysis) + crowsnest |
+| 60 | LMA + crowsnest (disabled on boot; auto-woken by `/webcam`) |
 | 70 | step-servo support (servo_enable_delay) |
 | 90 | restart + next steps |
 

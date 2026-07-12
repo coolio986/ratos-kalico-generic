@@ -1,0 +1,18 @@
+[Unit]
+Description=RatOS on-demand wake (configurator + crowsnest via nginx auth_request)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/ratos-ondemand/ratos-ondemand-wake.py
+Restart=on-failure
+RestartSec=2
+Environment=RATOS_ONDEMAND_IDLE_SEC=900
+Environment=RATOS_ONDEMAND_START_TIMEOUT=120
+# Restrict to loopback wake API only
+Environment=RATOS_ONDEMAND_HOST=127.0.0.1
+Environment=RATOS_ONDEMAND_PORT=3199
+
+[Install]
+WantedBy=multi-user.target
