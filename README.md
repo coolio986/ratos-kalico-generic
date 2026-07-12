@@ -37,9 +37,43 @@ cd ~/ratos-kalico-generic
 RK_GH_OWNER=youruser ./install.sh
 ```
 
+## What gets baked where
+
+| Change | Fresh-install path |
+|---|---|
+| Kalico `beacon_mesh` ZMesh API (no `reactor`) | step `36` re-applies; also baked by `scripts/publish-configurator-deployment.sh` into the configurator’s bundled `configuration/` |
+| Kalico `ratos_hybrid_corexy` (`supports_dual_carriage`, `clear_homing_state`) | step `36` (+ publish script into fork) |
+| `split_delta_z` / `log_points` / `pygam` / `check-version.py` | step `36` |
+| OSS analysis (uPlot) + MJPEG-first VAOC | must live in `RatOS-configurator` **`v2.1.x-deployment`** `app/build` — publish with the script below. SciChart is **removed**, not patched. |
+| Moonraker DB seeds (VAOC camera-settings) | step `65` |
+| Step-servo enable delay | step `70` |
+
+### Publish the OSS configurator deployment branch
+Build on a PC (never on the Pi), then push:
+
+```bash
+# after: cd RatOS-configurator-source-…/src && pnpm build
+BUILD_DIR=/path/to/RatOS-configurator-source-…/src/build \
+  ./scripts/publish-configurator-deployment.sh
+```
+
+That replaces `app/build` on `v2.1.x-deployment` and applies the Kalico `beacon_mesh` / kinematics patches into the bundled `configuration/`. Step `36` still re-applies those patches so a stale fork cannot brick a reinstall.
+
+## Homing / Beacon
+`G28 X Y` should work with step-servos. Full `G28` (Z) needs a **valid Beacon proximity model**.
+
+`Toolhead stopped below model range` means post-homing Beacon samples returned `dist: inf` (sensor reading outside the saved model). Typical recovery:
+
+```text
+G28 X Y
+BEACON_MODEL_REMOVE NAME=default
+BEACON_RATOS_CALIBRATE          # bed clear; writes a new [beacon model default]
+G28                             # full home
+```
+
+Do **not** restore an old SAVE_CONFIG beacon model from another sheet/temp without re-running calibrate.
+
 ## Notes / open items
-- **Kalico compatibility** of RatOS klippy extensions (`ratos_hybrid_corexy` kinematics, `ratos.py`,
-  `vaoc_led.py`, `resonance_generator.py`, `z_offset_probe.py`) is being validated.
 - **Native step-servos:** the fork should stop emitting `[tmc5160 ...]` for servo axes, retiring the
   old `strip_tmc.py` / watcher / systemd-override hack. Until then step 70 installs `servo_enable_delay`.
 - Target host validated so far: **Pi 4, 1GB, Debian 13 (trixie)** — configurator uses the *prebuilt*

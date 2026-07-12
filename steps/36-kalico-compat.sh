@@ -88,7 +88,24 @@ elif [[ -f "${BM}" ]]; then
   ok "beacon_mesh ZMesh already Kalico-compatible"
 fi
 
-# --- 7) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
+# --- 7) Configurator UI sanity (SciChart must be gone; VAOC uses MJPEG) -------------------
+# Analysis/VAOC now ship as MIT uPlot + MJPEG-first camera (`/webcam/stream`). Do NOT
+# patch SciChart fonts here — SciChart is removed from the OSS build. Fresh installs must
+# pull a v2.1.x-deployment that already contains that build (see scripts/publish-configurator-
+# deployment.sh). Fail loudly if a stale SciChart deployment is detected.
+BUILD_STATIC="${RK_CONFIGURATOR_DIR}/app/build"
+if [[ -d "${BUILD_STATIC}" ]]; then
+  if find "${BUILD_STATIC}" -name 'scichart2d.wasm' -print -quit | grep -q . \
+    || grep -Rql --include='*.js' 'SciChartSurface\|UseCommunityLicense\|scichart-react' "${BUILD_STATIC}" 2>/dev/null; then
+    warn "Stale SciChart assets detected under ${BUILD_STATIC}"
+    warn "Publish the OSS uPlot/VAOC build to ${RK_CONFIGURATOR_REPO} branch ${RK_CONFIGURATOR_BRANCH}"
+    warn "then re-run: ./install.sh 20 36"
+  else
+    ok "configurator build has no SciChart (uPlot/VAOC path)"
+  fi
+fi
+
+# --- 8) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
 # Python does NOT reliably invalidate __pycache__ for symlinked, in-place-edited modules,
 # so a stale .pyc can mask patches above (e.g. missing clear_homing_state at runtime).
 report "Clearing klipper bytecode cache (forces recompile of patched modules)"

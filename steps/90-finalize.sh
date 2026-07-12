@@ -15,14 +15,26 @@ cat <<EOF
     1) Open  http://<printer-ip>/configure/   -> finish the hardware wizard
        (board = BTT Octopus 1.1, toolboards = 2x EBB42, printer = V-Core 4 IDEX).
        This is what GENERATES RatOS.cfg.
-    2) VAOC + visual calibration:   http://<printer-ip>/configure/calibration
-       Realtime analysis:           http://<printer-ip>/configure/analysis
-    3) Restore your real V-Core 4 IDEX printer.cfg overrides + ratos-variables.cfg
-       from 'Current Configuration/' (servos, beacon model, bed meshes, shapers).
-    4) FLASH MCUs (Octopus + 2x EBB42) via the configurator or 'make flash'.
-    5) Calibrate beacon:  BEACON_RATOS_CALIBRATE
+    2) FLASH MCUs (Octopus + 2x EBB42) via the configurator or 'make flash'.
+    3) Home XY, then calibrate Beacon (required before full G28 / Z):
+         G28 X Y
+         BEACON_RATOS_CALIBRATE
+       If you see "Toolhead stopped below model range", the proximity model is
+       stale/out-of-domain — remove it and recalibrate:
+         BEACON_MODEL_REMOVE NAME=default
+         BEACON_RATOS_CALIBRATE
+    4) Full home + leveling:  G28  then  Z_TILT_ADJUST  then bed mesh.
+    5) VAOC:  http://<printer-ip>/configure/calibration
+       Analysis: http://<printer-ip>/configure/analysis
+       (OSS uPlot + MJPEG stream — SciChart must not be present.)
+
+  Re-publish OSS configurator UI (PC, not Pi):
+    BUILD_DIR=…/src/build ./scripts/publish-configurator-deployment.sh
 
   Health checks:
     sudo systemctl status ratos-configurator klipper moonraker nginx
     curl -s -o /dev/null -w '%{http_code}\n' http://localhost/configure/
+    # must print nothing:
+    find ~/ratos-configurator/app/build -name 'scichart*.wasm'
 EOF
+

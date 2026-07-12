@@ -27,6 +27,7 @@ STEPS=(
   "40-nginx-proxy.sh"
   "50-moonraker-wire.sh"
   "60-extras.sh"
+  "65-ratos-db-defaults.sh"
   "70-servos.sh"
   "80-register-extensions.sh"
   "90-finalize.sh"
