@@ -60,7 +60,35 @@ if ! "${RK_KLIPPY_ENV}/bin/python" -c "import pygam" 2>/dev/null; then
 fi
 "${RK_KLIPPY_ENV}/bin/python" -c "import pygam" 2>/dev/null && ok "pygam available in klippy-env" || warn "pygam missing"
 
-# --- 6) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
+# --- 6) beacon_mesh.py: Kalico ZMesh(params, name) — no reactor arg --------------------
+# Stock RatOS/Klipper ZMesh.__init__(params, name, reactor); Kalico dropped reactor.
+# Without this, BEACON_RATOS_CALIBRATE / BEACON_CREATE_SCAN_COMPENSATION_MESH dies with:
+#   TypeError: ZMesh.__init__() takes 3 positional arguments but 4 were given
+BM="${RATOS_DIR}/klippy/beacon_mesh.py"
+if [[ -f "${BM}" ]] && grep -qE 'BedMesh\.ZMesh\([^)]*self\.reactor\)' "${BM}"; then
+  report "Patching beacon_mesh.py ZMesh calls for Kalico (drop reactor arg)"
+  as_user "python3 -c \"
+from pathlib import Path
+p = Path('${BM}')
+s = p.read_text()
+s = s.replace(
+    'BedMesh.ZMesh(profiles[profile][\\\"mesh_params\\\"], profile, self.reactor)',
+    'BedMesh.ZMesh(profiles[profile][\\\"mesh_params\\\"], profile)  # Kalico: no reactor arg')
+s = s.replace(
+    'BedMesh.ZMesh(params, profile_name, self.reactor)',
+    'BedMesh.ZMesh(params, profile_name)  # Kalico: no reactor arg')
+p.write_text(s)
+\""
+  if grep -qE 'BedMesh\.ZMesh\([^)]*self\.reactor\)' "${BM}"; then
+    warn "beacon_mesh ZMesh patch incomplete"
+  else
+    ok "beacon_mesh ZMesh calls Kalico-compatible"
+  fi
+elif [[ -f "${BM}" ]]; then
+  ok "beacon_mesh ZMesh already Kalico-compatible"
+fi
+
+# --- 7) Clear klipper bytecode cache so patched extensions/kinematics reload -------------
 # Python does NOT reliably invalidate __pycache__ for symlinked, in-place-edited modules,
 # so a stale .pyc can mask patches above (e.g. missing clear_homing_state at runtime).
 report "Clearing klipper bytecode cache (forces recompile of patched modules)"
