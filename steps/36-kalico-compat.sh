@@ -28,40 +28,12 @@ if [[ -f "${KIN}" ]]; then
     as_user "python3 -c \"p='${KIN}'; s=open(p).read(); s=s.replace('self.printer = config.get_printer()','self.printer = config.get_printer()\n        self.supports_dual_carriage = True  # Kalico kinematics API (IDEX)',1); open(p,'w').write(s)\""
     grep -q "supports_dual_carriage" "${KIN}" && ok "supports_dual_carriage added" || warn "patch failed"
   else ok "supports_dual_carriage present"; fi
-  # 2b) Kalico passes homing axes to set_position as names ("xyz"), not integer indexes.
-  if grep -q "for axis in homing_axes:" "${KIN}"; then
-    report "Updating set_position to Kalico axis-name handling"
-    as_user "python3 -c \"p='${KIN}'; s=open(p).read(); old='    def set_position(self, newpos, homing_axes):\n        for i, rail in enumerate(self.rails):\n            rail.set_position(newpos)\n            for axis in homing_axes:\n                if self.dc_module and axis == self.dc_module.axis:\n                    rail = self.dc_module.get_primary_rail().get_rail()\n                else:\n                    rail = self.rails[axis]\n                self.limits[axis] = rail.get_range()\n'; new='    def set_position(self, newpos, homing_axes):\n        for rail in self.rails:\n            rail.set_position(newpos)\n        for axis_name in homing_axes:\n            axis = \\\"xyz\\\".index(axis_name)\n            if self.dc_module and axis == self.dc_module.axis:\n                rail = self.dc_module.get_primary_rail().get_rail()\n            else:\n                rail = self.rails[axis]\n            self.limits[axis] = rail.get_range()\n'; s=s.replace(old,new); open(p,'w').write(s)\""
-    ! grep -q "for axis in homing_axes:" "${KIN}" && ok "set_position updated" || die "set_position repair failed"
-  fi
-  grep -Fq 'axis = "xyz".index(axis_name)' "${KIN}" \
-    || die "set_position does not use Kalico axis-name semantics"
-  # 2c) clear_homing_state method (Kalico force_move.py SET_KINEMATIC_POSITION calls it)
-  if grep -q "if i in axes:" "${KIN}"; then
-    report "Repairing clear_homing_state axis-name handling"
-    as_user "python3 -c \"p='${KIN}'; s=open(p).read(); s=s.replace('for i, _ in enumerate(self.limits):\n            if i in axes:\n                self.limits[i] = (1.0, -1.0)', 'for axis, axis_name in enumerate(\\\"xyz\\\"):\n            if axis_name in axes:\n                self.limits[axis] = (1.0, -1.0)'); open(p,'w').write(s)\""
-    ! grep -q "if i in axes:" "${KIN}" && ok "clear_homing_state repaired" || die "clear_homing_state repair failed"
-  fi
+  # 2b) clear_homing_state method (Kalico force_move.py SET_KINEMATIC_POSITION calls it)
   if ! grep -q "def clear_homing_state" "${KIN}"; then
     report "Adding clear_homing_state to ratos_hybrid_corexy (Kalico kinematics API)"
-    as_user "python3 -c \"p='${KIN}'; s=open(p).read(); m='    def clear_homing_state(self, axes):\n        for axis, axis_name in enumerate(\\\"xyz\\\"):\n            if axis_name in axes:\n                self.limits[axis] = (1.0, -1.0)\n\n'; s=s.replace('    def home_axis(', m+'    def home_axis(', 1); open(p,'w').write(s)\""
+    as_user "python3 -c \"p='${KIN}'; s=open(p).read(); m='    def clear_homing_state(self, axes):\n        for i, _ in enumerate(self.limits):\n            if i in axes:\n                self.limits[i] = (1.0, -1.0)\n\n'; s=s.replace('    def home_axis(', m+'    def home_axis(', 1); open(p,'w').write(s)\""
     grep -q "def clear_homing_state" "${KIN}" && ok "clear_homing_state added" || warn "patch failed"
   else ok "clear_homing_state present"; fi
-  grep -Fq 'for axis, axis_name in enumerate("xyz")' "${KIN}" \
-    || die "clear_homing_state does not use Kalico axis-name semantics"
-  python3 -m py_compile "${KIN}" || die "ratos_hybrid_corexy.py failed syntax validation"
-fi
-
-# --- 2d) ratos_homing: Kalico toolhead.set_position expects named homing axes -------------
-HOMING="${RATOS_DIR}/klippy/ratos_homing.py"
-if [[ -f "${HOMING}" ]]; then
-  if grep -Fq 'homing_axes=[2]' "${HOMING}"; then
-    report "Updating ratos_homing Z-hop to Kalico axis-name handling"
-    as_user "python3 -c \"p='${HOMING}'; s=open(p).read(); s=s.replace('homing_axes=[2]', 'homing_axes=\\\"z\\\"'); open(p,'w').write(s)\""
-  fi
-  grep -Fq 'homing_axes="z"' "${HOMING}" \
-    || die "ratos_homing does not use Kalico axis-name semantics"
-  python3 -m py_compile "${HOMING}" || die "ratos_homing.py failed syntax validation"
 fi
 
 # --- 3) beacon.cfg: log_points is a RatOS bed_mesh patch absent in Kalico -----------------
