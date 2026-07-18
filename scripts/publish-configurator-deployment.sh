@@ -73,6 +73,56 @@ s = s.replace(
 p.write_text(s)
 PY
   fi
+  if grep -q "for axis in homing_axes:" "${KIN}"; then
+    echo "Updating bundled set_position to Kalico axis-name handling"
+    python3 - <<PY
+from pathlib import Path
+p = Path("${KIN}")
+s = p.read_text()
+old = """    def set_position(self, newpos, homing_axes):
+        for i, rail in enumerate(self.rails):
+            rail.set_position(newpos)
+            for axis in homing_axes:
+                if self.dc_module and axis == self.dc_module.axis:
+                    rail = self.dc_module.get_primary_rail().get_rail()
+                else:
+                    rail = self.rails[axis]
+                self.limits[axis] = rail.get_range()
+"""
+new = """    def set_position(self, newpos, homing_axes):
+        for rail in self.rails:
+            rail.set_position(newpos)
+        for axis_name in homing_axes:
+            axis = "xyz".index(axis_name)
+            if self.dc_module and axis == self.dc_module.axis:
+                rail = self.dc_module.get_primary_rail().get_rail()
+            else:
+                rail = self.rails[axis]
+            self.limits[axis] = rail.get_range()
+"""
+s = s.replace(old, new)
+p.write_text(s)
+PY
+  fi
+  if grep -q "if i in axes:" "${KIN}"; then
+    echo "Repairing bundled clear_homing_state axis-name handling"
+    python3 - <<PY
+from pathlib import Path
+p = Path("${KIN}")
+s = p.read_text()
+s = s.replace(
+    """        for i, _ in enumerate(self.limits):
+            if i in axes:
+                self.limits[i] = (1.0, -1.0)
+""",
+    """        for axis, axis_name in enumerate("xyz"):
+            if axis_name in axes:
+                self.limits[axis] = (1.0, -1.0)
+""",
+)
+p.write_text(s)
+PY
+  fi
   if ! grep -q "def clear_homing_state" "${KIN}"; then
     echo "Adding clear_homing_state to bundled kinematics"
     python3 - <<PY
@@ -80,15 +130,20 @@ from pathlib import Path
 p = Path("${KIN}")
 s = p.read_text()
 m = """    def clear_homing_state(self, axes):
-        for i, _ in enumerate(self.limits):
-            if i in axes:
-                self.limits[i] = (1.0, -1.0)
+        for axis, axis_name in enumerate("xyz"):
+            if axis_name in axes:
+                self.limits[axis] = (1.0, -1.0)
 
 """
 s = s.replace("    def home_axis(", m + "    def home_axis(", 1)
 p.write_text(s)
 PY
   fi
+  grep -Fq 'axis = "xyz".index(axis_name)' "${KIN}" \
+    || { echo "ERROR: bundled set_position lacks Kalico axis-name handling" >&2; exit 1; }
+  grep -Fq 'for axis, axis_name in enumerate("xyz")' "${KIN}" \
+    || { echo "ERROR: bundled clear_homing_state lacks Kalico axis-name handling" >&2; exit 1; }
+  python3 -m py_compile "${KIN}"
 fi
 
 # Bake KLIPPER_ENV wrappers into bundled shaper/belt graph scripts (Kalico cffi)
