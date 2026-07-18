@@ -146,6 +146,20 @@ PY
   python3 -m py_compile "${KIN}"
 fi
 
+# Kalico toolhead.set_position expects named homing axes.
+HOMING="${WORK}/configuration/klippy/ratos_homing.py"
+if [[ -f "${HOMING}" ]]; then
+  python3 - <<PY
+from pathlib import Path
+p = Path("${HOMING}")
+s = p.read_text().replace('homing_axes=[2]', 'homing_axes="z"')
+p.write_text(s)
+PY
+  grep -Fq 'homing_axes="z"' "${HOMING}" \
+    || { echo "ERROR: bundled ratos_homing lacks Kalico axis-name handling" >&2; exit 1; }
+  python3 -m py_compile "${HOMING}"
+fi
+
 # Bake KLIPPER_ENV wrappers into bundled shaper/belt graph scripts (Kalico cffi)
 for _bt in \
   "${WORK}/configuration/scripts/idex-generate-belt-tension-graph.sh" \

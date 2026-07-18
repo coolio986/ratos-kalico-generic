@@ -52,6 +52,18 @@ if [[ -f "${KIN}" ]]; then
   python3 -m py_compile "${KIN}" || die "ratos_hybrid_corexy.py failed syntax validation"
 fi
 
+# --- 2d) ratos_homing: Kalico toolhead.set_position expects named homing axes -------------
+HOMING="${RATOS_DIR}/klippy/ratos_homing.py"
+if [[ -f "${HOMING}" ]]; then
+  if grep -Fq 'homing_axes=[2]' "${HOMING}"; then
+    report "Updating ratos_homing Z-hop to Kalico axis-name handling"
+    as_user "python3 -c \"p='${HOMING}'; s=open(p).read(); s=s.replace('homing_axes=[2]', 'homing_axes=\\\"z\\\"'); open(p,'w').write(s)\""
+  fi
+  grep -Fq 'homing_axes="z"' "${HOMING}" \
+    || die "ratos_homing does not use Kalico axis-name semantics"
+  python3 -m py_compile "${HOMING}" || die "ratos_homing.py failed syntax validation"
+fi
+
 # --- 3) beacon.cfg: log_points is a RatOS bed_mesh patch absent in Kalico -----------------
 BC="${RATOS_DIR}/z-probe/beacon.cfg"
 if [[ -f "${BC}" ]] && grep -qE "^log_points:" "${BC}"; then
